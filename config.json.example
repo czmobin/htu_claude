@@ -1,0 +1,22 @@
+{
+  "_comment": "ICT Trading Bot V2 Configuration",
+  "_comment2": "Copy this file to config.json and fill in your credentials",
+
+  "symbol": "EUR_USD",
+  "lot_size": 1000,
+
+  "provider": "simulated",
+  "_provider_options": ["simulated", "oanda"],
+
+  "oanda_api_key": "YOUR_OANDA_API_KEY_HERE",
+  "oanda_account_id": "YOUR_OANDA_ACCOUNT_ID_HERE",
+  "oanda_practice": true,
+
+  "telegram_token": "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+  "telegram_chat_id": "YOUR_TELEGRAM_CHAT_ID_HERE",
+
+  "_trading_notes": "Trading sessions are in UTC-4 timezone",
+  "_session_1": "London: 2:00-5:00",
+  "_session_2": "New York AM: 7:00-11:00",
+  "_session_3": "New York PM: 14:00-15:00"
+}
