@@ -48,19 +48,28 @@ class BacktestEngine:
         logger.info(f"Backtest Engine initialized for {symbol}")
         logger.info(f"Initial Balance: ${initial_balance}")
 
-    def load_historical_data(self, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+    def load_historical_data(self, start_date: str, end_date: str,
+                             use_csv: bool = False, csv_folder: str = "historical_data") -> Dict[str, pd.DataFrame]:
         """
         Load historical data for multiple timeframes
 
         Args:
             start_date: Start date in format "YYYY-MM-DD"
             end_date: End date in format "YYYY-MM-DD"
+            use_csv: If True, load from CSV files instead of Yahoo Finance
+            csv_folder: Folder containing CSV files
 
         Returns:
             Dictionary with dataframes for each timeframe
         """
         logger.info(f"Loading historical data from {start_date} to {end_date}")
 
+        # Option 1: Load from CSV files
+        if use_csv:
+            logger.info(f"Loading data from CSV files in '{csv_folder}'")
+            return self._load_from_csv(csv_folder, start_date, end_date)
+
+        # Option 2: Load from Yahoo Finance
         try:
             import yfinance as yf
             ticker = yf.Ticker(self.symbol)
@@ -87,11 +96,14 @@ class BacktestEngine:
                     data['M5'] = self._format_dataframe(df_m5)
                     logger.info(f"M5: {len(data['M5'])} candles loaded")
 
-            # M15 data
-            df_m15 = ticker.history(start=start_date, end=end_date, interval='15m')
-            if not df_m15.empty:
-                data['M15'] = self._format_dataframe(df_m15)
-                logger.info(f"M15: {len(data['M15'])} candles loaded")
+            # M15 data (for fallback strategy with H1)
+            if period_days <= 60:
+                df_m15 = ticker.history(start=start_date, end=end_date, interval='15m')
+                if not df_m15.empty:
+                    data['M15'] = self._format_dataframe(df_m15)
+                    logger.info(f"M15: {len(data['M15'])} candles loaded")
+            else:
+                logger.info(f"M15 skipped (period > 60 days). Will use H1 as fallback.")
 
             # H1 data
             df_h1 = ticker.history(start=start_date, end=end_date, interval='1h')
@@ -109,6 +121,50 @@ class BacktestEngine:
 
         except Exception as e:
             logger.error(f"Error loading historical data: {e}", exc_info=True)
+            return {}
+
+    def _load_from_csv(self, csv_folder: str, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        Load data from CSV files
+
+        Args:
+            csv_folder: Folder containing CSV files
+            start_date: Filter data from this date
+            end_date: Filter data until this date
+
+        Returns:
+            Dictionary with timeframes
+        """
+        try:
+            from csv_data_loader import CSVDataLoader
+
+            loader = CSVDataLoader(csv_folder)
+
+            # Extract symbol name (remove =X suffix for CSV)
+            csv_symbol = self.symbol.replace('=X', '').replace('/', '')
+
+            # Load all timeframes
+            data = loader.load_all_timeframes(csv_symbol)
+
+            # Filter by date range
+            start = pd.to_datetime(start_date)
+            end = pd.to_datetime(end_date)
+
+            filtered_data = {}
+            for tf, df in data.items():
+                mask = (df['time'] >= start) & (df['time'] <= end)
+                df_filtered = df[mask].copy()
+                if len(df_filtered) > 0:
+                    filtered_data[tf] = df_filtered
+                    logger.info(f"{tf}: {len(df_filtered)} candles (filtered)")
+
+            return filtered_data
+
+        except ImportError:
+            logger.error("csv_data_loader module not found")
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading CSV data: {e}", exc_info=True)
             return {}
 
     def _format_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -151,8 +207,18 @@ class BacktestEngine:
             ltf = 'M5'
             logger.info("Strategy: M15 (liquidity) + M5 (MSS)")
 
+        # Fallback: Use H1 if M15/M5 not available (for longer date ranges)
+        if (htf not in data or ltf not in data) and 'H1' in data:
+            logger.warning(f"{htf} or {ltf} not available. Falling back to H1 (liquidity) + M15 (MSS)")
+            htf = 'H1'
+            ltf = 'M15' if 'M15' in data else 'H1'
+            logger.info(f"Using fallback strategy: {htf} + {ltf}")
+
         if htf not in data or ltf not in data or 'D' not in data:
             logger.error(f"Required timeframes not available. Need: {htf}, {ltf}, D")
+            logger.error(f"Available timeframes: {list(data.keys())}")
+            logger.error("TIP: For date ranges > 60 days, Yahoo Finance doesn't provide M15/M5 data.")
+            logger.error("     Try: 1) Shorter date range (last 60 days), or 2) Use H1 data")
             return self._generate_results()
 
         df_htf = data[htf]
@@ -447,9 +513,21 @@ class BacktestEngine:
             logger.warning("No trades executed during backtest period")
             return {
                 'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
                 'win_rate': 0,
                 'total_profit': 0,
-                'trades': []
+                'total_wins_profit': 0,
+                'total_loss_profit': 0,
+                'avg_win': 0,
+                'avg_loss': 0,
+                'profit_factor': 0,
+                'max_drawdown': 0,
+                'initial_balance': self.initial_balance,
+                'final_balance': self.initial_balance,
+                'roi': 0,
+                'trades': [],
+                'equity_curve': []
             }
 
         # Calculate statistics

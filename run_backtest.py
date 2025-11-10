@@ -29,16 +29,21 @@ def main():
 
     # ========== CONFIGURATION ==========
 
-    # Symbol to test (Yahoo Finance format)
-    # Examples:
-    # - "EURUSD=X" for EUR/USD
-    # - "GBPUSD=X" for GBP/USD
-    # - "USDJPY=X" for USD/JPY
-    # - "AAPL" for Apple stock
+    # Data Source
+    USE_CSV = False  # True = Load from CSV files, False = Yahoo Finance
+    CSV_FOLDER = "historical_data"  # Folder containing CSV files
+
+    # Symbol to test
+    # For Yahoo Finance: "EURUSD=X", "GBPUSD=X", "USDJPY=X"
+    # For CSV: "EURUSD", "GBPUSD", "USDJPY" (filename: EURUSD_H1.csv)
     SYMBOL = "EURUSD=X"
 
     # Date range for backtest
-    START_DATE = "2024-01-01"  # Format: YYYY-MM-DD
+    # IMPORTANT: Yahoo Finance limitation:
+    # - M15/M5 data: Only last 60 days available
+    # - H1 data: Several months available
+    # For longer periods, the system will automatically use H1 data
+    START_DATE = "2024-09-01"  # Format: YYYY-MM-DD (last 60 days recommended)
     END_DATE = "2024-11-01"    # Format: YYYY-MM-DD
 
     # Account settings
@@ -55,6 +60,9 @@ def main():
     print(f"💰 Initial Balance: ${INITIAL_BALANCE}")
     print(f"📈 Lot Size: {LOT_SIZE}")
     print(f"⚙️  Strategy: {'M5+M1' if USE_M5_M1 else 'M15+M5'}")
+    print(f"📂 Data Source: {'CSV Files' if USE_CSV else 'Yahoo Finance'}")
+    if USE_CSV:
+        print(f"📁 CSV Folder: {CSV_FOLDER}")
     print("\n" + "-" * 80 + "\n")
 
     # Initialize backtest engine
@@ -66,10 +74,13 @@ def main():
     )
 
     # Load historical data
-    print("📥 Loading historical data from Yahoo Finance...")
+    if USE_CSV:
+        print(f"📥 Loading historical data from CSV files in '{CSV_FOLDER}'...")
+    else:
+        print("📥 Loading historical data from Yahoo Finance...")
     print("⏳ This may take a moment...\n")
 
-    data = engine.load_historical_data(START_DATE, END_DATE)
+    data = engine.load_historical_data(START_DATE, END_DATE, use_csv=USE_CSV, csv_folder=CSV_FOLDER)
 
     if not data:
         print("❌ Failed to load historical data. Please check:")

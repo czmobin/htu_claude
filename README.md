@@ -78,7 +78,25 @@ Edit `run_backtest.py` to change:
 - Lot size
 - Strategy timeframes (M5+M1 or M15+M5)
 
+### Using CSV Files (Unlimited Data):
+
+Yahoo Finance has 60-day limitation. Use CSV files for unlimited testing:
+
+```bash
+# 1. Download data from HistData.com or MT5
+# 2. Convert to CSV format
+python convert_histdata.py your_file.csv EURUSD
+
+# 3. Enable CSV in run_backtest.py
+USE_CSV = True
+SYMBOL = "EURUSD"
+
+# 4. Run backtest
+python run_backtest.py
+```
+
 📖 **[Full Backtesting Guide (Persian)](BACKTEST_GUIDE_FA.md)**
+📊 **[Data Sources Guide (Persian)](DATA_SOURCES_GUIDE_FA.md)** - Download unlimited historical data!
 
 ---
 
