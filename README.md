@@ -46,6 +46,42 @@ python ict_bot_complete.py
 
 ---
 
+## 📊 Backtesting - Test Your Strategy
+
+**NEW!** Test the bot on historical data to see Win Rate and performance before live trading!
+
+### Quick Backtest:
+
+```bash
+# Install dependencies
+pip install yfinance pandas numpy matplotlib
+
+# Run backtest
+python run_backtest.py
+```
+
+### What You Get:
+
+- ✅ **Win Rate** - Percentage of winning trades
+- ✅ **Profit Factor** - Ratio of wins to losses
+- ✅ **ROI** - Return on investment
+- ✅ **Equity Curve** - Visual chart of account balance
+- ✅ **Trade History** - Detailed CSV with all trades
+- ✅ **Max Drawdown** - Worst decline from peak
+
+### Customize Backtest:
+
+Edit `run_backtest.py` to change:
+- Symbol (EUR/USD, GBP/USD, etc.)
+- Date range (test any period)
+- Initial balance
+- Lot size
+- Strategy timeframes (M5+M1 or M15+M5)
+
+📖 **[Full Backtesting Guide (Persian)](BACKTEST_GUIDE_FA.md)**
+
+---
+
 ## 📊 Strategy Overview
 
 Based on **HTU Trading Strategy PDF**:
