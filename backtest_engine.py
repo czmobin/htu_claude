@@ -87,11 +87,14 @@ class BacktestEngine:
                     data['M5'] = self._format_dataframe(df_m5)
                     logger.info(f"M5: {len(data['M5'])} candles loaded")
 
-            # M15 data
-            df_m15 = ticker.history(start=start_date, end=end_date, interval='15m')
-            if not df_m15.empty:
-                data['M15'] = self._format_dataframe(df_m15)
-                logger.info(f"M15: {len(data['M15'])} candles loaded")
+            # M15 data (for fallback strategy with H1)
+            if period_days <= 60:
+                df_m15 = ticker.history(start=start_date, end=end_date, interval='15m')
+                if not df_m15.empty:
+                    data['M15'] = self._format_dataframe(df_m15)
+                    logger.info(f"M15: {len(data['M15'])} candles loaded")
+            else:
+                logger.info(f"M15 skipped (period > 60 days). Will use H1 as fallback.")
 
             # H1 data
             df_h1 = ticker.history(start=start_date, end=end_date, interval='1h')
@@ -151,8 +154,18 @@ class BacktestEngine:
             ltf = 'M5'
             logger.info("Strategy: M15 (liquidity) + M5 (MSS)")
 
+        # Fallback: Use H1 if M15/M5 not available (for longer date ranges)
+        if (htf not in data or ltf not in data) and 'H1' in data:
+            logger.warning(f"{htf} or {ltf} not available. Falling back to H1 (liquidity) + M15 (MSS)")
+            htf = 'H1'
+            ltf = 'M15' if 'M15' in data else 'H1'
+            logger.info(f"Using fallback strategy: {htf} + {ltf}")
+
         if htf not in data or ltf not in data or 'D' not in data:
             logger.error(f"Required timeframes not available. Need: {htf}, {ltf}, D")
+            logger.error(f"Available timeframes: {list(data.keys())}")
+            logger.error("TIP: For date ranges > 60 days, Yahoo Finance doesn't provide M15/M5 data.")
+            logger.error("     Try: 1) Shorter date range (last 60 days), or 2) Use H1 data")
             return self._generate_results()
 
         df_htf = data[htf]
@@ -447,9 +460,21 @@ class BacktestEngine:
             logger.warning("No trades executed during backtest period")
             return {
                 'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
                 'win_rate': 0,
                 'total_profit': 0,
-                'trades': []
+                'total_wins_profit': 0,
+                'total_loss_profit': 0,
+                'avg_win': 0,
+                'avg_loss': 0,
+                'profit_factor': 0,
+                'max_drawdown': 0,
+                'initial_balance': self.initial_balance,
+                'final_balance': self.initial_balance,
+                'roi': 0,
+                'trades': [],
+                'equity_curve': []
             }
 
         # Calculate statistics

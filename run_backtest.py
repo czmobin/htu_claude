@@ -38,7 +38,11 @@ def main():
     SYMBOL = "EURUSD=X"
 
     # Date range for backtest
-    START_DATE = "2024-01-01"  # Format: YYYY-MM-DD
+    # IMPORTANT: Yahoo Finance limitation:
+    # - M15/M5 data: Only last 60 days available
+    # - H1 data: Several months available
+    # For longer periods, the system will automatically use H1 data
+    START_DATE = "2024-09-01"  # Format: YYYY-MM-DD (last 60 days recommended)
     END_DATE = "2024-11-01"    # Format: YYYY-MM-DD
 
     # Account settings
