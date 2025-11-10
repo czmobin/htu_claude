@@ -106,11 +106,13 @@ def main():
 
     engine.save_results_to_csv(results, filename="backtest_trades.csv")
     engine.plot_equity_curve(results, filename="backtest_equity_curve.png")
+    engine.plot_trades_on_chart(results, data, filename="backtest_trades_chart.png", max_trades=15)
 
     print("\n✅ Backtest completed successfully!")
     print("\nGenerated files:")
     print("├─ backtest_trades.csv - Detailed trade history")
-    print("└─ backtest_equity_curve.png - Account balance chart")
+    print("├─ backtest_equity_curve.png - Account balance chart")
+    print("└─ backtest_trades_chart.png - Price chart with trade markers")
 
     # Performance summary
     print("\n" + "=" * 80)

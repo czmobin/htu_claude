@@ -666,3 +666,212 @@ class BacktestEngine:
 
         logger.info(f"Equity curve saved to {filename}")
         print(f"📊 Equity curve chart saved to: {filename}")
+
+    def plot_trades_on_chart(self, results: Dict, data: Dict[str, pd.DataFrame],
+                             filename: str = "trades_chart.png", max_trades: int = 10):
+        """
+        Plot trades on price chart with entry/exit points
+
+        Args:
+            results: Backtest results dictionary
+            data: Historical data dictionary with timeframes
+            filename: Output filename
+            max_trades: Maximum number of recent trades to display
+        """
+        if not results['trades']:
+            logger.warning("No trades to plot")
+            return
+
+        # Get recent trades
+        trades = results['trades'][-max_trades:]
+
+        if not trades:
+            logger.warning("No trades to plot")
+            return
+
+        # Determine which timeframe to use
+        timeframe = 'M15' if 'M15' in data else ('H1' if 'H1' in data else 'M5')
+        if timeframe not in data:
+            logger.error(f"Timeframe {timeframe} not available in data")
+            return
+
+        df = data[timeframe].copy()
+
+        # Get time range for trades
+        trade_times = []
+        for trade in trades:
+            if isinstance(trade['entry_time'], str):
+                trade_times.append(pd.to_datetime(trade['entry_time']))
+            else:
+                trade_times.append(trade['entry_time'])
+
+            if isinstance(trade['exit_time'], str):
+                trade_times.append(pd.to_datetime(trade['exit_time']))
+            else:
+                trade_times.append(trade['exit_time'])
+
+        # Filter dataframe to relevant time period with some padding
+        min_time = min(trade_times) - timedelta(hours=12)
+        max_time = max(trade_times) + timedelta(hours=12)
+
+        df_plot = df[(df.index >= min_time) & (df.index <= max_time)].copy()
+
+        if df_plot.empty:
+            logger.error("No price data in the trade time range")
+            return
+
+        # Limit to reasonable number of candles
+        if len(df_plot) > 500:
+            df_plot = df_plot.iloc[-500:]
+
+        df_plot = df_plot.reset_index(drop=False)
+        df_plot.rename(columns={'index': 'time'}, inplace=True)
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=(20, 10))
+
+        # Draw candlesticks
+        for idx in range(len(df_plot)):
+            o = df_plot['open'].iloc[idx]
+            c = df_plot['close'].iloc[idx]
+            h = df_plot['high'].iloc[idx]
+            l = df_plot['low'].iloc[idx]
+
+            color = '#26a69a' if c >= o else '#ef5350'  # Green/Red
+
+            # Body
+            height = abs(c - o)
+            bottom = min(o, c)
+
+            if height > 0:
+                rect = Rectangle((idx - 0.3, bottom), 0.6, height,
+                                facecolor=color, edgecolor=color, alpha=0.8, linewidth=1)
+                ax.add_patch(rect)
+            else:
+                ax.plot([idx - 0.3, idx + 0.3], [o, o], color=color, linewidth=1.5)
+
+            # Wick
+            ax.plot([idx, idx], [l, h], color=color, linewidth=1, alpha=0.6)
+
+        # Plot trades
+        for trade_idx, trade in enumerate(trades):
+            # Find candle indices for entry and exit
+            entry_time = pd.to_datetime(trade['entry_time']) if isinstance(trade['entry_time'], str) else trade['entry_time']
+            exit_time = pd.to_datetime(trade['exit_time']) if isinstance(trade['exit_time'], str) else trade['exit_time']
+
+            # Find closest candle index
+            entry_candle_idx = None
+            exit_candle_idx = None
+
+            for idx, row in df_plot.iterrows():
+                if entry_candle_idx is None and abs((row['time'] - entry_time).total_seconds()) < 3600:
+                    entry_candle_idx = idx
+                if exit_candle_idx is None and abs((row['time'] - exit_time).total_seconds()) < 3600:
+                    exit_candle_idx = idx
+
+            if entry_candle_idx is None or exit_candle_idx is None:
+                continue
+
+            entry_price = trade['entry_price']
+            exit_price = trade['exit_price']
+            sl = trade['sl']
+            tp = trade['tp']
+            is_win = trade['result'] == 'win'
+            is_buy = trade['direction'].upper() == 'BUY'
+
+            # Colors
+            trade_color = '#4CAF50' if is_win else '#F44336'  # Green for win, Red for loss
+            entry_marker_color = '#2196F3' if is_buy else '#FF9800'  # Blue for buy, Orange for sell
+
+            # Plot entry point
+            if is_buy:
+                ax.scatter(entry_candle_idx, entry_price, marker='^', s=300,
+                          color=entry_marker_color, edgecolors='black', linewidths=2,
+                          zorder=10, label='_nolegend_')
+                ax.text(entry_candle_idx, entry_price - (df_plot['high'].max() - df_plot['low'].min()) * 0.02,
+                       f'BUY #{trade_idx+1}', fontsize=9, ha='center', va='top',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor=entry_marker_color, alpha=0.7),
+                       fontweight='bold')
+            else:
+                ax.scatter(entry_candle_idx, entry_price, marker='v', s=300,
+                          color=entry_marker_color, edgecolors='black', linewidths=2,
+                          zorder=10, label='_nolegend_')
+                ax.text(entry_candle_idx, entry_price + (df_plot['high'].max() - df_plot['low'].min()) * 0.02,
+                       f'SELL #{trade_idx+1}', fontsize=9, ha='center', va='bottom',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor=entry_marker_color, alpha=0.7),
+                       fontweight='bold')
+
+            # Plot exit point
+            ax.scatter(exit_candle_idx, exit_price, marker='o', s=200,
+                      color=trade_color, edgecolors='black', linewidths=2,
+                      zorder=10, label='_nolegend_')
+
+            # Draw line from entry to exit
+            ax.plot([entry_candle_idx, exit_candle_idx], [entry_price, exit_price],
+                   color=trade_color, linewidth=2, linestyle='--', alpha=0.7, zorder=5)
+
+            # Plot SL and TP levels (only for portion of trade)
+            x_range_start = entry_candle_idx
+            x_range_end = exit_candle_idx
+
+            # Stop Loss line
+            ax.plot([x_range_start, x_range_end], [sl, sl],
+                   color='red', linewidth=1.5, linestyle=':', alpha=0.5, zorder=4)
+
+            # Take Profit line
+            ax.plot([x_range_start, x_range_end], [tp, tp],
+                   color='green', linewidth=1.5, linestyle=':', alpha=0.5, zorder=4)
+
+            # Add profit/loss label at exit
+            profit = trade['profit']
+            profit_text = f"+${profit:.2f}" if profit > 0 else f"-${abs(profit):.2f}"
+            ax.text(exit_candle_idx, exit_price, f'  {profit_text}',
+                   fontsize=8, ha='left', va='center',
+                   color=trade_color, fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor=trade_color))
+
+        # Configure chart
+        ax.set_xlim(-1, len(df_plot))
+        y_margin = (df_plot['high'].max() - df_plot['low'].min()) * 0.1
+        ax.set_ylim(df_plot['low'].min() - y_margin, df_plot['high'].max() + y_margin)
+
+        ax.set_title(f'Trading Results - Last {len(trades)} Trades on {self.symbol}',
+                    fontsize=18, weight='bold', pad=20)
+        ax.set_xlabel('Time', fontsize=14)
+        ax.set_ylabel('Price', fontsize=14)
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        ax.set_facecolor('#f9f9f9')
+
+        # Add legend
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], marker='^', color='w', markerfacecolor='#2196F3',
+                   markersize=12, label='BUY Entry', markeredgecolor='black', markeredgewidth=1.5),
+            Line2D([0], [0], marker='v', color='w', markerfacecolor='#FF9800',
+                   markersize=12, label='SELL Entry', markeredgecolor='black', markeredgewidth=1.5),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#4CAF50',
+                   markersize=10, label='Win Exit', markeredgecolor='black', markeredgewidth=1.5),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#F44336',
+                   markersize=10, label='Loss Exit', markeredgecolor='black', markeredgewidth=1.5),
+            Line2D([0], [0], color='red', linewidth=2, linestyle=':', label='Stop Loss'),
+            Line2D([0], [0], color='green', linewidth=2, linestyle=':', label='Take Profit')
+        ]
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
+
+        # Add statistics box
+        stats_text = (
+            f"Trades Shown: {len(trades)}\n"
+            f"Wins: {sum(1 for t in trades if t['result'] == 'win')}\n"
+            f"Losses: {sum(1 for t in trades if t['result'] == 'loss')}\n"
+            f"Total P/L: ${sum(t['profit'] for t in trades):.2f}"
+        )
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+               fontsize=11, verticalalignment='top', horizontalalignment='right',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8, edgecolor='black', linewidth=1.5))
+
+        plt.tight_layout()
+        plt.savefig(filename, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        logger.info(f"Trades chart saved to {filename}")
+        print(f"📈 Trades visualization chart saved to: {filename}")
