@@ -48,19 +48,28 @@ class BacktestEngine:
         logger.info(f"Backtest Engine initialized for {symbol}")
         logger.info(f"Initial Balance: ${initial_balance}")
 
-    def load_historical_data(self, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+    def load_historical_data(self, start_date: str, end_date: str,
+                             use_csv: bool = False, csv_folder: str = "historical_data") -> Dict[str, pd.DataFrame]:
         """
         Load historical data for multiple timeframes
 
         Args:
             start_date: Start date in format "YYYY-MM-DD"
             end_date: End date in format "YYYY-MM-DD"
+            use_csv: If True, load from CSV files instead of Yahoo Finance
+            csv_folder: Folder containing CSV files
 
         Returns:
             Dictionary with dataframes for each timeframe
         """
         logger.info(f"Loading historical data from {start_date} to {end_date}")
 
+        # Option 1: Load from CSV files
+        if use_csv:
+            logger.info(f"Loading data from CSV files in '{csv_folder}'")
+            return self._load_from_csv(csv_folder, start_date, end_date)
+
+        # Option 2: Load from Yahoo Finance
         try:
             import yfinance as yf
             ticker = yf.Ticker(self.symbol)
@@ -112,6 +121,50 @@ class BacktestEngine:
 
         except Exception as e:
             logger.error(f"Error loading historical data: {e}", exc_info=True)
+            return {}
+
+    def _load_from_csv(self, csv_folder: str, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        Load data from CSV files
+
+        Args:
+            csv_folder: Folder containing CSV files
+            start_date: Filter data from this date
+            end_date: Filter data until this date
+
+        Returns:
+            Dictionary with timeframes
+        """
+        try:
+            from csv_data_loader import CSVDataLoader
+
+            loader = CSVDataLoader(csv_folder)
+
+            # Extract symbol name (remove =X suffix for CSV)
+            csv_symbol = self.symbol.replace('=X', '').replace('/', '')
+
+            # Load all timeframes
+            data = loader.load_all_timeframes(csv_symbol)
+
+            # Filter by date range
+            start = pd.to_datetime(start_date)
+            end = pd.to_datetime(end_date)
+
+            filtered_data = {}
+            for tf, df in data.items():
+                mask = (df['time'] >= start) & (df['time'] <= end)
+                df_filtered = df[mask].copy()
+                if len(df_filtered) > 0:
+                    filtered_data[tf] = df_filtered
+                    logger.info(f"{tf}: {len(df_filtered)} candles (filtered)")
+
+            return filtered_data
+
+        except ImportError:
+            logger.error("csv_data_loader module not found")
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading CSV data: {e}", exc_info=True)
             return {}
 
     def _format_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
